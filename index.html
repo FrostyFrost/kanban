@@ -18,7 +18,6 @@
     <button id="btn-file" class="btn btn-ghost" title="Загрузить файл задач">📁</button>
     <button id="btn-pull" class="btn btn-ghost" title="Обновить из GitHub">🔄</button>
     <button id="btn-sync" class="btn btn-primary" title="Загрузить локальные изменения в GitHub">☁</button>
-    <button id="btn-new" class="btn btn-success">+ Новая задача</button>
   </div>
 </header>
 
@@ -31,8 +30,13 @@
 
 <main id="main">
   <!-- Канбан-доска -->
-  <section id="board-view" class="board">
-    <!-- колонки создаются JS -->
+  <section id="board-view">
+    <div class="board-toolbar">
+      <button id="btn-new" class="btn btn-success">+ Новая задача</button>
+    </div>
+    <div class="board" id="board">
+      <!-- колонки создаются JS -->
+    </div>
   </section>
 
   <!-- Календарь -->

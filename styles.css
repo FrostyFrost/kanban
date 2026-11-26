@@ -95,6 +95,15 @@ html, body {
 main { padding: 16px 20px 40px; }
 
 /* Board / columns */
+.board-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 4px 0 12px;
+}
+.board-toolbar .btn-success { padding: 10px 18px; font-size: 15px; }
+
 .board {
   display: grid;
   grid-template-columns: repeat(4, minmax(240px, 1fr));
@@ -175,6 +184,7 @@ main { padding: 16px 20px 40px; }
 .cal-day-head { text-align: center; font-size: 11px; color: var(--muted); text-transform: uppercase; padding: 6px 0; letter-spacing: 0.6px; }
 .cal-day {
   min-height: 72px;
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -188,9 +198,14 @@ main { padding: 16px 20px 40px; }
 .cal-day.today { border-color: var(--primary); color: var(--text); }
 .cal-day.selected { outline: 2px solid var(--primary); color: var(--text); }
 .cal-day .cal-num { font-weight: 600; }
-.cal-day .cal-dots { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
-.cal-day .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); }
-.cal-day .dot.overdue { background: var(--danger); }
+.cal-day .cal-dots { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; max-height: 44px; overflow: hidden; }
+.cal-day .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--primary); flex-shrink: 0; box-shadow: 0 0 0 2px var(--surface); }
+.cal-day .dot.dot-overdue { background: var(--danger); }
+.cal-day .cal-count {
+  position: absolute; top: 3px; right: 5px;
+  font-size: 10px; font-weight: 700; color: var(--muted);
+  background: rgba(255,255,255,0.05); border-radius: 999px; padding: 0 5px; line-height: 1.4;
+}
 
 .calendar-detail {
   margin-top: 16px;

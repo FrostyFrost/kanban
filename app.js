@@ -6,6 +6,10 @@ const STATUS_ORDER = ["todo", "doing", "waiting", "done"];
 const STATUS_LABELS = { todo: "Надо сделать", doing: "В работе", waiting: "Ожидание", done: "Выполнено" };
 const TAG_LABELS = { work: "работа", family: "семья", school: "институт", other: "прочее" };
 const TAG_CLASSES = { work: "tag", family: "tag tag-family", school: "tag tag-school", other: "tag tag-other" };
+const TAG_COLORS = { work: "#5b8def", family: "#f5a623", school: "#2fbf71", other: "#94a1b7" };
+function tagColor(tag) {
+  return TAG_COLORS[tag] || "#b18cff";
+}
 
 const DEFAULT_SETTINGS = {
   token: "",
@@ -29,7 +33,7 @@ const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 
 const els = {
-  board: $("#board-view"),
+  board: $("#board"),
   calendarView: $("#calendar-view"),
   stats: {
     todo: document.querySelector('[data-stat="todo"]'),
@@ -520,13 +524,15 @@ function renderCalendar() {
     const iso = isoOf(year, month, day);
     const list = tasksByDate.get(iso) || [];
     const isToday = iso === todayISO();
-    const dots = list.slice(0, 3)
-      .map((t) => `<span class="dot ${t.due < todayISO() && t.status !== "done" ? "overdue" : ""}"></span>`)
+    const overdueCls = (t) => (t.due < todayISO() && t.status !== "done" ? " dot-overdue" : "");
+    const dots = list.slice(0, 6)
+      .map((t) => `<span class="dot${overdueCls(t)}" style="background:${t.due < todayISO() && t.status !== "done" ? "var(--danger)" : tagColor(t.tags[0] || "other")}" title="${escapeHtml(t.text)}"></span>`)
       .join("");
-    const extra = list.length > 3 ? `<span class="tag tag-other">+${list.length - 3}</span>` : "";
+    const extra = list.length > 6 ? `<span class="tag tag-other">+${list.length - 6}</span>` : "";
     html += `
       <div class="cal-day ${isToday ? "today" : ""} ${selectedDate === iso ? "selected" : ""}" data-date="${iso}">
         <div class="cal-num">${day}</div>
+        ${list.length ? `<div class="cal-count">${list.length}</div>` : ""}
         <div class="cal-dots">${dots}${extra}</div>
       </div>
     `;
