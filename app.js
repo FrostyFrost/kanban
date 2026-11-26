@@ -481,16 +481,17 @@ async function githubGetJson(url, token) {
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(url, { headers });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`GitHub API вернул ${res.status}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message ? `GitHub API вернул ${res.status}: ${err.message}` : `GitHub API вернул ${res.status}`);
+  }
   return await res.json();
 }
 
 async function githubRawFetch(repoPath, branch, path, token) {
-  // raw URL для публичного репозитория — без токена
+  // raw URL для публичного репозитория — без токена (raw не поддерживает auth)
   const url = `https://raw.githubusercontent.com/${repoPath}/${branch}/${path}`;
-  const headers = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(url, { headers });
+  const res = await fetch(url);
   if (!res.ok) throw new Error(`raw fetch ${res.status}`);
   return await res.text();
 }
@@ -532,11 +533,15 @@ async function githubPush() {
     "Content-Type": "application/json",
   };
 
-  // сначала тянем sha, если файл существует
+  // сначала тянем sha, если файл существует (404 — файла нет, создаём новое)
   let sha = null;
   const getUrl = `${api}?ref=${encodeURIComponent(s.branch)}`;
   const existing = await githubGetJson(getUrl, s.token);
   if (existing && existing.sha) sha = existing.sha;
+  else if (existing) {
+    // файл существует, но не распаковывается — проверим текст-детали
+    console.warn("Не удалось извлечь sha из ответа:", existing);
+  }
 
   const contentStr = serializeJSONL(tasks);
   const bytes = new TextEncoder().encode(contentStr);
@@ -1045,7 +1050,16 @@ async function syncAll() {
     toast(`Синхронизировано — новых: ${stats.added}, обновлено из облака: ${stats.updated}, локальные актуальнее: ${stats.kept}`);
   } catch (e) {
     setSyncStatus("Ошибка отправки", "err");
-    toast("Не удалось отправить на GitHub: " + e.message + " (данные уже загружены локально)", "err");
+    const hint = /401/.test(e.message)
+      ? " — токен невалиден или истёк (⚙ → введите свежий PAT)"
+      : /403/.test(e.message)
+        ? " — нет прав на репозиторий (проверьте repo и scope PAT в ⚙)"
+        : /404/.test(e.message)
+          ? " — репозиторий или файл не найден (проверьте repo, branch и file в ⚙)"
+          : /422/.test(e.message)
+            ? " — проверьте ветку и путь к файлу (⚙)"
+            : "";
+    toast("Не удалось отправить на GitHub: " + e.message + hint + " (данные уже загружены локально)", "err", 9000);
   }
 }
 
