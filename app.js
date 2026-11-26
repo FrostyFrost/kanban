@@ -255,11 +255,21 @@ async function writeFileHandle(handle, content) {
   await writable.close();
 }
 
-async function autoSaveFile() {
+let fileBoundToastShown = false;
+
+async function autoSaveFile({ silent = false } = {}) {
   saveLocalStorage();
-  if (!fileHandle) return;
+  if (!fileHandle) {
+    if (!silent && !fileBoundToastShown) {
+      fileBoundToastShown = true;
+      setSyncStatus("⚠ Файл не привязан — нажмите 📁", "warn");
+      toast("Файл задач не привязан — нажмите 📁 слева сверху. Изменения сохраняются только локально", "err");
+    }
+    return;
+  }
   try {
     await writeFileHandle(fileHandle, serializeJSONL(tasks));
+    fileBoundToastShown = false;
     setSyncStatus("Файл сохранён", "ok");
   } catch (e) {
     console.warn("Не удалось сохранить файл", e);
@@ -706,15 +716,9 @@ async function loadTasks() {
     try {
       const text = await readFileHandle(handle);
       const parsed = parseJSONL(text);
-      if (parsed.length) {
-        tasks = parsed;
-        setSyncStatus("Файл загружен", "ok");
-        return;
-      }
-      // файл пустой — всё равно используем его как источник
       tasks = parsed;
-      fileHandle = handle;
-      setSyncStatus("Файл пуст", "ok");
+      fileHandle = handle;   // ← важно: запомнили handle, чтобы автосохранение было
+      setSyncStatus(parsed.length ? "Файл загружен" : "Файл пуст", "ok");
       return;
     } catch (e) {
       console.warn("Ошибка чтения файла:", e);
@@ -741,7 +745,7 @@ async function syncFromGitHub({ silent = false } = {}) {
     // заменяем локальное состояние (это источник истины на данном компе)
     tasks = parsed;
     renderAll();
-    autoSaveFile();
+    autoSaveFile({ silent: true });
     setSyncStatus("Синхронизировано с GitHub", "ok");
     if (!silent) toast("Загружено с GitHub");
     return true;
@@ -805,6 +809,7 @@ function setupEvents() {
       const text = await readFileHandle(h);
       const parsed = parseJSONL(text);
       tasks = parsed;
+      fileHandle = h;
       idbPut(TASK_SELECT_FILE_ACTIVE_KEY, h);
       renderAll();
       autoSaveFile();
