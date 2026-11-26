@@ -736,18 +736,41 @@ async function loadTasks() {
   setSyncStatus("Новый список", "");
 }
 
+function pickNewest(a, b) {
+  // «updated» — ISO-строка; если нет — используем created; при равных/пустых — локальная версия побеждает
+  const ta = Date.parse(a.updated || a.created || "") || 0;
+  const tb = Date.parse(b.updated || b.created || "") || 0;
+  if (ta === tb) return a;               // равный updated → локальная версия
+  return ta > tb ? a : b;
+}
+
+function mergeTasks(localTasks, remoteTasks) {
+  const byId = new Map();
+  for (const t of localTasks) byId.set(t.id, t);
+  const stats = { added: 0, updated: 0, kept: 0 };
+  for (const t of remoteTasks) {
+    const local = byId.get(t.id);
+    if (!local) { byId.set(t.id, t); stats.added++; continue; }
+    const winner = pickNewest(local, t);
+    if (winner === t) { byId.set(t.id, t); stats.updated++; }
+    else { byId.set(t.id, local); stats.kept++; }
+  }
+  return { tasks: [...byId.values()], stats };
+}
+
 async function syncFromGitHub({ silent = false } = {}) {
   setSyncStatus("Синхронизация…", "");
   try {
     const text = await githubPull();
     if (!text) throw new Error("Пустой ответ от GitHub");
-    const parsed = parseJSONL(text);
-    // заменяем локальное состояние (это источник истины на данном компе)
-    tasks = parsed;
+    const remoteTasks = parseJSONL(text);
+    const { tasks: merged, stats } = mergeTasks(tasks, remoteTasks);
+    tasks = merged;
+    console.log(`merge: added=${stats.added}, updated=${stats.updated}, kept=${stats.kept}`);
     renderAll();
     autoSaveFile({ silent: true });
     setSyncStatus("Синхронизировано с GitHub", "ok");
-    if (!silent) toast("Загружено с GitHub");
+    if (!silent) toast(`Загружено с GitHub — новых: ${stats.added}, обновлено из облака: ${stats.updated}, локальные актуальнее: ${stats.kept}`);
     return true;
   } catch (e) {
     if (!silent) {
