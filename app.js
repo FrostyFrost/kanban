@@ -289,7 +289,7 @@ function normalizeTask(raw) {
     recur: normalizeRecur(raw.recur),
     hidden: Boolean(raw.hidden),
     created: typeof raw.created === "string" && raw.created ? raw.created : todayISO(),
-    updated: new Date().toISOString(),
+    updated: typeof raw.updated === "string" && raw.updated ? raw.updated : (typeof raw.created === "string" && raw.created ? raw.created : todayISO()),
   };
 }
 
