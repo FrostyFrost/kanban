@@ -1058,7 +1058,9 @@ async function syncAll() {
           ? " — репозиторий или файл не найден (проверьте repo, branch и file в ⚙)"
           : /422/.test(e.message)
             ? " — проверьте ветку и путь к файлу (⚙)"
-            : "";
+            : /Failed to fetch|NetworkError|TypeError|Load failed/i.test(e.message)
+              ? " — нет сети или браузер заблокировал запрос (проверьте прокси/VPN)"
+              : "";
     toast("Не удалось отправить на GitHub: " + e.message + hint + " (данные уже загружены локально)", "err", 9000);
   }
 }
