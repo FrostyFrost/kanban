@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Канбан</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="app-header">
+  <div class="header-left">
+    <span class="logo">▦</span>
+    <h1>Канбан</h1>
+    <span id="sync-status" class="sync-status" title="Статус синхронизации"></span>
+  </div>
+  <div class="header-right">
+    <button id="btn-calendar" class="btn btn-ghost" title="Календарь">📅</button>
+    <button id="btn-settings" class="btn btn-ghost" title="Настройки">⚙</button>
+    <button id="btn-file" class="btn btn-ghost" title="Загрузить файл задач">📁</button>
+    <button id="btn-sync" class="btn btn-primary" title="Загрузить локальные изменения в GitHub">☁</button>
+    <button id="btn-new" class="btn btn-success">+ Новая задача</button>
+  </div>
+</header>
+
+<nav class="stats-bar" id="stats-bar">
+  <span class="stat"><b data-stat="todo">0</b> надо сделать</span>
+  <span class="stat"><b data-stat="doing">0</b> в работе</span>
+  <span class="stat"><b data-stat="waiting">0</b> ожидаем</span>
+  <span class="stat"><b data-stat="done">0</b> выполнено</span>
+</nav>
+
+<main id="main">
+  <!-- Канбан-доска -->
+  <section id="board-view" class="board">
+    <!-- колонки создаются JS -->
+  </section>
+
+  <!-- Календарь -->
+  <section id="calendar-view" class="calendar hidden">
+    <div class="calendar-controls">
+      <button id="cal-prev" class="btn btn-ghost">‹</button>
+      <h2 id="cal-title"></h2>
+      <button id="cal-next" class="btn btn-ghost">›</button>
+    </div>
+    <div class="calendar-grid" id="calendar-grid"></div>
+    <div class="calendar-detail" id="calendar-detail"></div>
+  </section>
+</main>
+
+<!-- Модалка задачи -->
+<div id="modal" class="modal-backdrop hidden">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <h2 id="modal-title">Новая задача</h2>
+      <button id="modal-close" class="icon-btn" aria-label="Закрыть">✕</button>
+    </div>
+    <form id="task-form">
+      <input type="hidden" id="task-id">
+      <label class="field">
+        <span>Название</span>
+        <input type="text" id="task-text" required maxlength="200" placeholder="Например: Купить молоко">
+      </label>
+      <div class="field-row">
+        <label class="field">
+          <span>Этап</span>
+          <select id="task-status">
+            <option value="todo">Надо сделать</option>
+            <option value="doing">В работе</option>
+            <option value="waiting">Ожидание</option>
+            <option value="done">Выполнено</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Срок (необязательно)</span>
+          <input type="date" id="task-due">
+        </label>
+      </div>
+      <label class="field">
+        <span>Теги</span>
+        <input type="text" id="task-tags" list="known-tags" placeholder="Выберите или введите свой">
+        <datalist id="known-tags"></datalist>
+        <small>Разделяйте теги запятой</small>
+      </label>
+      <label class="field">
+        <span>Заметка (необязательно)</span>
+        <textarea id="task-notes" rows="3" maxlength="1000" placeholder=""></textarea>
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="task-delete" class="btn btn-danger hidden">Удалить</button>
+        <span class="spacer"></span>
+        <button type="button" id="task-cancel" class="btn btn-ghost">Отмена</button>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Настройки -->
+<div id="settings-modal" class="modal-backdrop hidden">
+  <div class="modal settings-modal" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <h2>Настройки</h2>
+      <button id="settings-close" class="icon-btn" aria-label="Закрыть">✕</button>
+    </div>
+    <form id="settings-form">
+      <p class="muted">Синхронизация по кнопочке <b>☁</b> — это коммит и push локального репозитория данных в GitHub (по токену). Если «зачем» не нужен — просто скачивайте файл вручную.</p>
+      <label class="field">
+        <span>GitHub PAT (для отправки)</span>
+        <input type="password" id="gh-token" placeholder="ghp_... (опционально)">
+      </label>
+      <label class="field">
+        <span>Репозиторий данных</span>
+        <input type="text" id="gh-repo" value="FrostyFrost/kanban-data">
+      </label>
+      <label class="field">
+        <span>Файл в репозитории</span>
+        <input type="text" id="gh-file" value="tasks.jsonl">
+      </label>
+      <label class="field">
+        <span>Ветка</span>
+        <input type="text" id="gh-branch" value="main">
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="settings-clear-token" class="btn btn-ghost">Сбросить токен</button>
+        <span class="spacer"></span>
+        <button type="button" id="settings-cancel" class="btn btn-ghost">Отмена</button>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
