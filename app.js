@@ -201,20 +201,14 @@ function normalizeStatus(s) {
 
 /* ---------- Повторяющаяся карточка: завершение ---------- */
 function nextOccurrenceDate(dueISO, recur) {
-  // следующая дата цикла после dueISO; null — если цикл исчерпан
+  // следующая дата цикла после dueISO; null — если цикл исчерпан (next > until)
   if (!dueISO || !recur) return null;
   const base = new Date(dueISO + "T00:00:00");
   if (isNaN(base.getTime())) return null;
   const untilDate = recur.until ? new Date(recur.until + "T00:00:00") : null;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  let d = base;
-  let guard = 0;
-  do {
-    d = advanceDateObj(d, recur.every, recur.unit);
-    guard++;
-  } while (d < today && guard < 10000);
-  if (untilDate && d > untilDate) return null;
-  return isoLocal(d);
+  const next = advanceDateObj(base, recur.every, recur.unit);
+  if (untilDate && next > untilDate) return null;
+  return isoLocal(next);
 }
 
 function askRecurringDone(task) {
@@ -649,6 +643,7 @@ function renderBoard() {
     body2.addEventListener("dragleave", () => col.classList.remove("drag-over"));
     body2.addEventListener("drop", (e) => {
       e.preventDefault();
+      e.stopPropagation();
       col.classList.remove("drag-over");
       const id = e.dataTransfer.getData("text/plain") || dragCard;
       const t = tasks.find((x) => x.id === id);
