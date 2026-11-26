@@ -89,27 +89,70 @@ function normalizeRecur(raw) {
   const until = typeof raw.until === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.until) ? raw.until : "";
   return { every, unit, until };
 }
-function advanceDueDate(dueStr, every, unit) {
-  if (!dueStr) return "";
-  const d = new Date(dueStr + "T00:00:00");
-  if (isNaN(d.getTime())) return "";
-  if (unit === "day") d.setDate(d.getDate() + every);
-  else if (unit === "week") d.setDate(d.getDate() + every * 7);
+function advanceDateObj(d, every, unit) {
+  const next = new Date(d.getTime());
+  if (unit === "day") next.setDate(next.getDate() + every);
+  else if (unit === "week") next.setDate(next.getDate() + every * 7);
   else if (unit === "month") {
-    const day = d.getDate();
-    d.setDate(1);
-    d.setMonth(d.getMonth() + every);
-    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    d.setDate(Math.min(day, lastDay));
+    const day = next.getDate();
+    next.setDate(1);
+    next.setMonth(next.getMonth() + every);
+    const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+    next.setDate(Math.min(day, lastDay));
   } else if (unit === "year") {
-    const day = d.getDate();
-    d.setDate(1);
-    d.setFullYear(d.getFullYear() + every);
-    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    d.setDate(Math.min(day, lastDay));
+    const day = next.getDate();
+    next.setDate(1);
+    next.setFullYear(next.getFullYear() + every);
+    const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+    next.setDate(Math.min(day, lastDay));
   }
-  // local ISO
+  return next;
+}
+
+function isoLocal(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// is the task's occurrence on this date?
+function taskOccurrencesOnDate(task, iso) {
+  if (!task.due) return false;
+  const target = new Date(iso + "T00:00:00");
+  if (task.due === iso) return true;
+  if (!task.recur) return false;
+  const { every, unit } = task.recur;
+  const untilDate = task.recur.until ? new Date(task.recur.until + "T00:00:00") : null;
+  if (untilDate && target > untilDate) return false;
+  let d = new Date(task.due + "T00:00:00");
+  let guard = 0;
+  while (d < target && guard < 20000) {
+    d = advanceDateObj(d, every, unit);
+    guard++;
+  }
+  return isoLocal(d) === iso;
+}
+
+function occurrenceIsoDates(task, monthStart, monthEnd) {
+  // convenience: dates in [monthStart, monthEnd]
+  if (!task.due) return [];
+  const due = new Date(task.due + "T00:00:00");
+  if (isNaN(due.getTime())) return [];
+  const result = [];
+  if (!task.recur) {
+    if (due >= monthStart && due <= monthEnd) result.push(isoLocal(due));
+    return result;
+  }
+  const { every, unit } = task.recur;
+  const untilDate = task.recur.until ? new Date(task.recur.until + "T00:00:00") : null;
+  if (untilDate && due > untilDate) return [];
+  let d = new Date(due);
+  let guard = 0;
+  while (d <= monthEnd && guard < 20000) {
+    if ((!untilDate || d <= untilDate) && d >= monthStart) result.push(isoLocal(d));
+    if (untilDate && d >= untilDate) break;
+    d = advanceDateObj(d, every, unit);
+    guard++;
+  }
+  return result;
 }
 
 function readRecurFromForm() {
@@ -124,28 +167,6 @@ function readRecurFromForm() {
 function syncRecurFieldsVisibility() {
   const show = els.taskRecurEnabled.checked;
   els.taskRecurFields.classList.toggle("hidden", !show);
-}
-
-function spawnNextRecurrence(task) {
-  // создать следующую инстанцию повторяющейся задачи
-  const recur = task.recur;
-  if (!recur || !recur.every || !recur.unit) return false;
-  const nextDue = advanceDueDate(task.due, recur.every, recur.unit);
-  if (!nextDue) return false;
-  if (recur.until && nextDue > recur.until) return false;   // конец периода
-  const next = {
-    id: genId(),
-    text: task.text,
-    status: "todo",
-    due: nextDue,
-    tags: [...task.tags],
-    notes: task.notes,
-    created: todayISO(),
-    updated: new Date().toISOString(),
-    recur: { every: recur.every, unit: recur.unit, until: recur.until || "" },
-  };
-  tasks.push(next);
-  return true;
 }
 
 function escapeHtml(s) {
@@ -555,7 +576,6 @@ function renderBoard() {
         const prev = t.status;
         t.status = status;
         t.updated = new Date().toISOString();
-        if (t.status === "done" && prev !== "done" && t.recur) spawnNextRecurrence(t);
         renderAll();
         autoSaveFile();
       }
@@ -571,7 +591,6 @@ function renderBoard() {
         const prev = t.status;
         t.status = status;
         t.updated = new Date().toISOString();
-        if (t.status === "done" && prev !== "done" && t.recur) spawnNextRecurrence(t);
         renderAll();
         autoSaveFile();
       }
@@ -598,11 +617,15 @@ function renderCalendar() {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
   const tasksByDate = new Map();
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
   for (const t of tasks) {
-    if (t.due && !t.hidden) {
-      const arr = tasksByDate.get(t.due) || [];
+    if (t.hidden || !t.due) continue;
+    const dates = occurrenceIsoDates(t, monthStart, monthEnd);
+    for (const iso of dates) {
+      const arr = tasksByDate.get(iso) || [];
       arr.push(t);
-      tasksByDate.set(t.due, arr);
+      tasksByDate.set(iso, arr);
     }
   }
 
@@ -613,9 +636,9 @@ function renderCalendar() {
     const iso = isoOf(year, month, day);
     const list = tasksByDate.get(iso) || [];
     const isToday = iso === todayISO();
-    const overdueCls = (t) => (t.due < todayISO() && t.status !== "done" ? " dot-overdue" : "");
+    const overdueCls = (t) => (iso < todayISO() && t.status !== "done" ? " dot-overdue" : "");
     const dots = list.slice(0, 6)
-      .map((t) => `<span class="dot${overdueCls(t)}" style="background:${t.due < todayISO() && t.status !== "done" ? "var(--danger)" : tagColor(t.tags[0] || "other")}" title="${escapeHtml(t.text)}"></span>`)
+      .map((t) => `<span class="dot${overdueCls(t)}" style="background:${iso < todayISO() && t.status !== "done" ? "var(--danger)" : tagColor(t.tags[0] || "other")}" title="${escapeHtml(t.text)}"></span>`)
       .join("");
     const extra = list.length > 6 ? `<span class="tag tag-other">+${list.length - 6}</span>` : "";
     html += `
@@ -642,14 +665,14 @@ function renderCalendarDetail() {
     els.calDetail.innerHTML = `<h3>Выберите день</h3>`;
     return;
   }
-  const list = tasks.filter((t) => t.due === selectedDate && !t.hidden);
+  const list = tasks.filter((t) => !t.hidden && taskOccurrencesOnDate(t, selectedDate));
   const d = new Date(selectedDate + "T00:00:00");
   const title = `${DAYS_RU[(d.getDay() + 6) % 7]}, ${d.getDate()} ${MONTHS_RU[d.getMonth()].toLowerCase()} ${d.getFullYear()}`;
   const rows = list.length
     ? list.map((t) => `
         <div class="cal-task" data-id="${t.id}">
           <div>
-            <div>${escapeHtml(t.text)}</div>
+            <div>${escapeHtml(t.text)}${t.recur ? " <span class='recur-badge' title='Повторяющаяся задача'>↻</span>" : ""}</div>
             <div class="task-meta">${t.tags.map(tagPill).join("")}</div>
           </div>
           <span class="tag tag-other">${STATUS_LABELS[t.status]}</span>
@@ -789,7 +812,6 @@ function saveTaskFromForm() {
       t.notes = notes;
       t.recur = recur;
       t.updated = new Date().toISOString();
-      if (t.status === "done" && prevStatus !== "done" && recur) spawnNextRecurrence(t);
     }
   } else {
     const newTask = {
@@ -804,7 +826,6 @@ function saveTaskFromForm() {
       updated: new Date().toISOString(),
     };
     tasks.push(newTask);
-    if (newTask.status === "done" && recur) spawnNextRecurrence(newTask);
   }
   closeModal();
   renderAll();
