@@ -685,7 +685,7 @@ async function loadTasks() {
   setSyncStatus("Новый список", "");
 }
 
-async function syncFromGitHub() {
+async function syncFromGitHub({ silent = false } = {}) {
   setSyncStatus("Синхронизация…", "");
   try {
     const text = await githubPull();
@@ -696,10 +696,32 @@ async function syncFromGitHub() {
     renderAll();
     autoSaveFile();
     setSyncStatus("Синхронизировано с GitHub", "ok");
-    toast("Загружено с GitHub");
+    if (!silent) toast("Загружено с GitHub");
+    return true;
   } catch (e) {
-    setSyncStatus("Ошибка синхронизации", "err");
-    toast("Не удалось загрузить с GitHub: " + e.message, "err");
+    if (!silent) {
+      setSyncStatus("Ошибка синхронизации", "err");
+      toast("Не удалось загрузить с GitHub: " + e.message, "err");
+    }
+    return false;
+  }
+}
+
+async function autoCheckRemote() {
+  // на открытии: только проверяем, есть ли обновления на GitHub — не перезаписываем без спроса
+  try {
+    const text = await githubPull();
+    if (!text) return;
+    const remoteTasks = parseJSONL(text);
+    const localNorm = JSON.stringify(serializeJSONL(tasks).trim());
+    const remoteNorm = JSON.stringify(text.trim());
+    if (localNorm === remoteNorm) {
+      setSyncStatus("Синхронизировано ✓", "ok");
+    } else {
+      setSyncStatus("Есть обновления на GitHub 🔄", "warn");
+    }
+  } catch (e) {
+    // отказ в доступе — тихо; локальные данные остаются
   }
 }
 
@@ -749,6 +771,7 @@ function setupEvents() {
       toast("Ошибка чтения файла: " + e.message, "err");
     }
   });
+  $("#btn-pull").addEventListener("click", () => syncFromGitHub());
   $("#btn-sync").addEventListener("click", () => syncToGitHub());
 
   // календарь
@@ -826,11 +849,8 @@ async function init() {
   setupEvents();
   await loadTasks();
   renderAll();
-  // попробуем синхронизироваться автоматически, но молча (если не настроено — тихо)
-  const s = loadSettings();
-  if (s.token) {
-    syncFromGitHub().catch(() => {});
-  }
+  // при открытии страницы — тихо проверяем наличие обновлений на GitHub (без перезаписи)
+  autoCheckRemote().catch(() => {});
 }
 
 document.addEventListener("DOMContentLoaded", init);
