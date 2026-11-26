@@ -113,6 +113,7 @@ function normalizeTask(raw) {
     due,
     tags,
     notes: String(raw.notes ?? "").trim(),
+    hidden: Boolean(raw.hidden),
     created: typeof raw.created === "string" && raw.created ? raw.created : todayISO(),
     updated: new Date().toISOString(),
   };
@@ -375,7 +376,7 @@ async function githubPush() {
 /* ---------- Рендер ---------- */
 function renderStats() {
   const counts = { todo: 0, doing: 0, waiting: 0, done: 0 };
-  for (const t of tasks) if (counts[t.status] !== undefined) counts[t.status]++;
+  for (const t of tasks) if (!t.hidden && counts[t.status] !== undefined) counts[t.status]++;
   for (const k of STATUS_ORDER) els.stats[k].textContent = counts[k];
 }
 
@@ -391,7 +392,9 @@ function taskCardHtml(task) {
   const dueHtml = task.due ? `<span class="due ${overdue ? "overdue" : ""}">📅 ${dueDate}</span>` : "";
   const tags = task.tags.map(tagPill).join("");
   const notes = task.notes ? `<div class="task-notes">${escapeHtml(task.notes)}</div>` : "";
+  const hideBtn = task.status === "done" ? `<button type="button" class="task-hide" data-hide="${task.id}" title="Скрыть карточку">Скрыть</button>` : "";
   return `
+    ${hideBtn}
     <div class="task-text">${escapeHtml(task.text)}</div>
     ${notes}
     <div class="task-meta">${tags}${dueHtml}</div>
@@ -404,7 +407,7 @@ function renderBoard() {
     const col = document.createElement("div");
     col.className = "column";
     col.dataset.status = status;
-    const items = tasks.filter((t) => t.status === status);
+    const items = tasks.filter((t) => t.status === status && !t.hidden);
     col.innerHTML = `
       <div class="column-header">
         <span class="column-title">${STATUS_LABELS[status]}</span>
@@ -437,6 +440,13 @@ function renderBoard() {
         card._justDragged = true;
         setTimeout(() => { card._justDragged = false; }, 250);
       });
+      const hideBtn = card.querySelector(".task-hide");
+      if (hideBtn) {
+        hideBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          hideTask(t.id);
+        });
+      }
       body.appendChild(card);
     }
     // drag&drop
@@ -496,7 +506,7 @@ function renderCalendar() {
 
   const tasksByDate = new Map();
   for (const t of tasks) {
-    if (t.due) {
+    if (t.due && !t.hidden) {
       const arr = tasksByDate.get(t.due) || [];
       arr.push(t);
       tasksByDate.set(t.due, arr);
@@ -537,7 +547,7 @@ function renderCalendarDetail() {
     els.calDetail.innerHTML = `<h3>Выберите день</h3>`;
     return;
   }
-  const list = tasks.filter((t) => t.due === selectedDate);
+  const list = tasks.filter((t) => t.due === selectedDate && !t.hidden);
   const d = new Date(selectedDate + "T00:00:00");
   const title = `${DAYS_RU[(d.getDay() + 6) % 7]}, ${d.getDate()} ${MONTHS_RU[d.getMonth()].toLowerCase()} ${d.getFullYear()}`;
   const rows = list.length
@@ -558,10 +568,41 @@ function renderCalendarDetail() {
   });
 }
 
+function hideTask(id) {
+  const t = tasks.find((x) => x.id === id);
+  if (!t) return;
+  t.hidden = true;
+  t.updated = new Date().toISOString();
+  renderAll();
+  autoSaveFile();
+  toast("Карточка скрыта");
+}
+
+function unhideAllTasks() {
+  let count = 0;
+  for (const t of tasks) {
+    if (t.hidden) { t.hidden = false; count++; }
+  }
+  if (count === 0) {
+    toast("Скрытых задач нет");
+    return;
+  }
+  renderAll();
+  autoSaveFile();
+  toast(`Показано скрытых: ${count}`);
+}
+
+function updateHiddenIndicator() {
+  const hiddenCount = tasks.filter((t) => t.hidden).length;
+  const el = document.getElementById("hidden-count");
+  if (el) el.textContent = hiddenCount ? `Скрыто карточек: ${hiddenCount}` : "Скрытых карточек нет";
+}
+
 function renderAll() {
   renderStats();
   renderBoard();
   renderCalendar();
+  updateHiddenIndicator();
 }
 
 /* ---------- Модалка ---------- */
@@ -748,11 +789,7 @@ async function syncToGitHub() {
 function setupEvents() {
   // создание задачи
   $("#btn-new").addEventListener("click", () => openModal(null));
-  $("#btn-calendar").addEventListener("click", () => {
-    document.querySelector("#board-view").classList.toggle("hidden");
-    document.querySelector("#calendar-view").classList.toggle("hidden");
-    renderCalendar();
-  });
+
   $("#btn-settings").addEventListener("click", () => openSettings());
   $("#btn-file").addEventListener("click", async () => {
     const h = await pickFile();
@@ -772,6 +809,7 @@ function setupEvents() {
     }
   });
   $("#btn-pull").addEventListener("click", () => syncFromGitHub());
+  $("#settings-show-hidden").addEventListener("click", unhideAllTasks);
   $("#btn-sync").addEventListener("click", () => syncToGitHub());
 
   // календарь

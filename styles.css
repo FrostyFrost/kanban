@@ -168,7 +168,7 @@ main { padding: 16px 20px 40px; }
 .due.overdue { color: var(--danger); font-weight: 700; }
 
 /* Calendar */
-.calendar { max-width: 900px; margin: 0 auto; }
+.calendar { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
 .calendar-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 18px; }
 .calendar-controls h2 { margin: 0; font-size: 18px; text-transform: capitalize; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
@@ -203,6 +203,23 @@ main { padding: 16px 20px 40px; }
 .calendar-detail h3 { margin: 0 0 8px; font-size: 14px; color: var(--muted); text-transform: capitalize; font-weight: 600; }
 .calendar-detail .cal-task { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px dashed var(--border); }
 .calendar-detail .cal-task:first-of-type { border-top: none; }
+
+/* Hidden done tasks row in settings */
+.hidden-tasks-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border: 1px dashed var(--border); border-radius: 10px;
+}
+.hidden-tasks-row .btn { padding: 6px 12px; font-size: 12px; }
+
+/* Hide button on done cards */
+.task-hide {
+  position: absolute; top: 8px; right: 8px;
+  background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+  color: var(--muted); border-radius: 6px; padding: 2px 8px; font-size: 10px;
+  cursor: pointer; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
+  transition: background 0.12s, color 0.12s;
+}
+.task-hide:hover { background: rgba(229,83,75,0.2); color: var(--danger); border-color: rgba(229,83,75,0.4); }
 
 /* Modal */
 .modal-backdrop {

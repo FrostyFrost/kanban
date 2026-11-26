@@ -14,7 +14,6 @@
     <span id="sync-status" class="sync-status" title="Статус синхронизации"></span>
   </div>
   <div class="header-right">
-    <button id="btn-calendar" class="btn btn-ghost" title="Календарь">📅</button>
     <button id="btn-settings" class="btn btn-ghost" title="Настройки">⚙</button>
     <button id="btn-file" class="btn btn-ghost" title="Загрузить файл задач">📁</button>
     <button id="btn-pull" class="btn btn-ghost" title="Обновить из GitHub">🔄</button>
@@ -37,7 +36,7 @@
   </section>
 
   <!-- Календарь -->
-  <section id="calendar-view" class="calendar hidden">
+  <section id="calendar-view" class="calendar">
     <div class="calendar-controls">
       <button id="cal-prev" class="btn btn-ghost">‹</button>
       <h2 id="cal-title"></h2>
@@ -121,6 +120,10 @@
         <span>Ветка</span>
         <input type="text" id="gh-branch" value="main">
       </label>
+      <div class="hidden-tasks-row">
+        <span id="hidden-count" class="muted"></span>
+        <button type="button" id="settings-show-hidden" class="btn btn-ghost">Показать скрытые</button>
+      </div>
       <div class="modal-actions">
         <button type="button" id="settings-clear-token" class="btn btn-ghost">Сбросить токен</button>
         <span class="spacer"></span>
