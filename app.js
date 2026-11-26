@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS = {
   file: "tasks.jsonl",
   branch: "main",
 };
+const TOKEN_NOTICE_KEY = "kanban.token-notice-seen";
 const SETTINGS_KEY = "kanban.settings";
 const TASK_SELECT_FILE_ACTIVE_KEY = "kanban.fileHandle";
 
@@ -172,12 +173,12 @@ function syncRecurFieldsVisibility() {
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function toast(msg, type = "ok") {
+function toast(msg, type = "ok", durationMs = 3500) {
   const el = document.createElement("div");
   el.className = "toast" + (type === "err" ? " err" : type === "ok" ? " ok" : "");
   el.textContent = msg;
   $("#toast-container").appendChild(el);
-  setTimeout(() => el.remove(), 3500);
+  setTimeout(() => el.remove(), durationMs);
 }
 function normalizeTags(str) {
   if (Array.isArray(str)) str = str.join(",");
@@ -1124,7 +1125,12 @@ function setupEvents() {
     };
     saveSettings(s);
     els.settingsModal.classList.add("hidden");
-    toast("Настройки сохранены");
+    if (s.token && !localStorage.getItem(TOKEN_NOTICE_KEY)) {
+      localStorage.setItem(TOKEN_NOTICE_KEY, "1");
+      toast("⚠ Токен сохранён в localStorage браузера — он виден через DevTools → Application → Local Storage. Не вставляйте токен в чаты и не коммитьте его в git.", "err", 9000);
+    } else {
+      toast("Настройки сохранены");
+    }
   });
   els.settingsModal.addEventListener("click", (e) => {
     if (e.target === els.settingsModal) els.settingsModal.classList.add("hidden");

@@ -328,6 +328,7 @@ main { padding: 16px 20px 40px; }
 .modal form { padding: 14px 18px 18px; display: flex; flex-direction: column; gap: 12px; }
 
 .field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
+.field small.muted { font-size: 11px; line-height: 1.4; opacity: 0.9; }
 .field input, .field select, .field textarea {
   background: var(--card);
   border: 1px solid var(--border);
