@@ -636,16 +636,16 @@ function renderCalendar() {
     const iso = isoOf(year, month, day);
     const list = tasksByDate.get(iso) || [];
     const isToday = iso === todayISO();
-    const overdueCls = (t) => (iso < todayISO() && t.status !== "done" ? " dot-overdue" : "");
-    const dots = list.slice(0, 6)
-      .map((t) => `<span class="dot${overdueCls(t)}" style="background:${iso < todayISO() && t.status !== "done" ? "var(--danger)" : tagColor(t.tags[0] || "other")}" title="${escapeHtml(t.text)}"></span>`)
+    const chipCls = (t) => (iso < todayISO() && t.status !== "done" ? " cal-chip-overdue" : "");
+    const chips = list.slice(0, 4)
+      .map((t) => `<div class="cal-chip${chipCls(t)}" data-id="${t.id}" style="--chip:${iso < todayISO() && t.status !== "done" ? "var(--danger)" : tagColor(t.tags[0] || "other")}" title="${escapeHtml(t.text)}">${escapeHtml(t.text)}</div>`)
       .join("");
-    const extra = list.length > 6 ? `<span class="tag tag-other">+${list.length - 6}</span>` : "";
+    const extra = list.length > 4 ? `<div class="cal-chip cal-chip-more">+${list.length - 4}</div>` : "";
     html += `
       <div class="cal-day ${isToday ? "today" : ""} ${selectedDate === iso ? "selected" : ""}" data-date="${iso}">
         <div class="cal-num">${day}</div>
         ${list.length ? `<div class="cal-count">${list.length}</div>` : ""}
-        <div class="cal-dots">${dots}${extra}</div>
+        <div class="cal-chips">${chips}${extra}</div>
       </div>
     `;
   }
@@ -655,6 +655,12 @@ function renderCalendar() {
     el.addEventListener("click", () => {
       selectedDate = selectedDate === el.dataset.date ? null : el.dataset.date;
       renderCalendar();
+    });
+    el.querySelectorAll(".cal-chip[data-id]").forEach((chip) => {
+      chip.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openModal(chip.dataset.id);
+      });
     });
   });
   renderCalendarDetail();
