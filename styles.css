@@ -303,6 +303,9 @@ main { padding: 16px 20px 40px; }
 
 .task-hide:hover { background: rgba(229,83,75,0.2); color: var(--danger); border-color: rgba(229,83,75,0.4); }
 
+/* Recurring done modal */
+.recur-done-text { padding: 6px 18px 0; margin: 0; font-size: 14px; color: var(--text); line-height: 1.5; }
+
 /* Modal */
 .modal-backdrop {
   position: fixed; inset: 0;

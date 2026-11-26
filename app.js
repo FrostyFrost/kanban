@@ -198,6 +198,86 @@ function taskTagsClass(tag) {
 function normalizeStatus(s) {
   return STATUS_ORDER.includes(s) ? s : "todo";
 }
+
+/* ---------- Повторяющаяся карточка: завершение ---------- */
+function nextOccurrenceDate(dueISO, recur) {
+  // следующая дата цикла после dueISO; null — если цикл исчерпан
+  if (!dueISO || !recur) return null;
+  const base = new Date(dueISO + "T00:00:00");
+  if (isNaN(base.getTime())) return null;
+  const untilDate = recur.until ? new Date(recur.until + "T00:00:00") : null;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  let d = base;
+  let guard = 0;
+  do {
+    d = advanceDateObj(d, recur.every, recur.unit);
+    guard++;
+  } while (d < today && guard < 10000);
+  if (untilDate && d > untilDate) return null;
+  return isoLocal(d);
+}
+
+function askRecurringDone(task) {
+  // возвращает Promise<"all" | "one" | null> — null = отмена
+  return new Promise((resolve) => {
+    const modal = document.getElementById("recur-done-modal");
+    const text = document.getElementById("recur-done-text");
+    const next = nextOccurrenceDate(task.due, task.recur);
+    if (!next) {
+      // цикл исчерпан — сразу "весь цикл"
+      resolve("all");
+      return;
+    }
+    text.textContent = `«${task.text}» — выполнить весь цикл, или только это одно событие? (следующее: ${next})`;
+    modal.classList.remove("hidden");
+    const cleanup = () => modal.classList.add("hidden");
+    document.getElementById("recur-done-all").onclick = () => { cleanup(); resolve("all"); };
+    document.getElementById("recur-done-one").onclick = () => { cleanup(); resolve("one"); };
+    document.getElementById("recur-done-cancel").onclick = () => { cleanup(); resolve(null); };
+    document.getElementById("recur-done-cancel-x").onclick = () => { cleanup(); resolve(null); };
+  });
+}
+
+// статус перехода карточки. Если переход в done и карточка повторяется — спрашиваем.
+// Возвращает Promise, который resolve-ит результатом применения; "cancel" — отмена.
+async function applyStatusChange(task, newStatus) {
+  if (task.status === newStatus) return "noop";
+  if (newStatus === "done" && task.recur) {
+    const choice = await askRecurringDone(task);
+    if (choice === null) return "cancel";
+    if (choice === "all") {
+      task.status = "done";
+      task.recur = null;
+      task.updated = new Date().toISOString();
+      renderAll();
+      autoSaveFile();
+      toast("Весь цикл выполнен — карточка в «Выполнено»");
+      return "done";
+    }
+    // one event
+    const next = nextOccurrenceDate(task.due, task.recur);
+    if (!next) {
+      task.status = "done";
+      task.recur = null;
+      task.updated = new Date().toISOString();
+      renderAll(); autoSaveFile();
+      toast("Весь цикл выполнен — карточка в «Выполнено»");
+      return "done";
+    }
+    task.status = "todo";
+    task.due = next;
+    task.updated = new Date().toISOString();
+    renderAll();
+    autoSaveFile();
+    toast(`Одно событие выполнено — следующее: ${next}`);
+    return "one";
+  }
+  task.status = newStatus;
+  task.updated = new Date().toISOString();
+  renderAll();
+  autoSaveFile();
+  return "done";
+}
 function normalizeTask(raw) {
   if (!raw || typeof raw !== "object") return null;
   const text = String(raw.text ?? "").trim();
@@ -573,11 +653,7 @@ function renderBoard() {
       const id = e.dataTransfer.getData("text/plain") || dragCard;
       const t = tasks.find((x) => x.id === id);
       if (t && t.status !== status) {
-        const prev = t.status;
-        t.status = status;
-        t.updated = new Date().toISOString();
-        renderAll();
-        autoSaveFile();
+        applyStatusChange(t, status);
       }
     });
     // пустая колонка принимает drop тоже
@@ -588,11 +664,7 @@ function renderBoard() {
       const id = e.dataTransfer.getData("text/plain") || dragCard;
       const t = tasks.find((x) => x.id === id);
       if (t && t.status !== status) {
-        const prev = t.status;
-        t.status = status;
-        t.updated = new Date().toISOString();
-        renderAll();
-        autoSaveFile();
+        applyStatusChange(t, status);
       }
     });
   }
@@ -620,7 +692,7 @@ function renderCalendar() {
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
   for (const t of tasks) {
-    if (t.hidden || !t.due) continue;
+    if (t.hidden || !t.due || t.status === "done") continue;
     const dates = occurrenceIsoDates(t, monthStart, monthEnd);
     for (const iso of dates) {
       const arr = tasksByDate.get(iso) || [];
@@ -671,7 +743,7 @@ function renderCalendarDetail() {
     els.calDetail.innerHTML = `<h3>Выберите день</h3>`;
     return;
   }
-  const list = tasks.filter((t) => !t.hidden && taskOccurrencesOnDate(t, selectedDate));
+  const list = tasks.filter((t) => !t.hidden && t.status !== "done" && taskOccurrencesOnDate(t, selectedDate));
   const d = new Date(selectedDate + "T00:00:00");
   const title = `${DAYS_RU[(d.getDay() + 6) % 7]}, ${d.getDate()} ${MONTHS_RU[d.getMonth()].toLowerCase()} ${d.getFullYear()}`;
   const rows = list.length
@@ -793,7 +865,7 @@ function closeModal() {
   editingId = null;
 }
 
-function saveTaskFromForm() {
+async function saveTaskFromForm() {
   const text = els.taskText.value.trim();
   if (!text) {
     toast("Введите название задачи", "err");
@@ -807,36 +879,55 @@ function saveTaskFromForm() {
     toast("При повторении укажите срок (дедлайн)", "err");
     return;
   }
-  if (editingId) {
-    const t = tasks.find((x) => x.id === editingId);
-    if (t) {
-      const prevStatus = t.status;
-      t.text = text;
-      t.status = normalizeStatus(els.taskStatus.value);
-      t.due = due;
-      t.tags = tags;
-      t.notes = notes;
-      t.recur = recur;
-      t.updated = new Date().toISOString();
+  const status = normalizeStatus(els.taskStatus.value);
+  const existing = editingId ? tasks.find((x) => x.id === editingId) : null;
+  const prevStatus = existing ? existing.status : null;
+
+  // переход в done + повторение — спрашиваем про весь цикл или одно событие
+  let finalStatus = status;
+  let finalRecur = recur;
+  let finalDue = due;
+  if (status === "done" && recur && prevStatus !== "done") {
+    const choice = await askRecurringDone({ text, due, recur });
+    if (choice === null) return;  // отмена — ничего не сохраняем
+    if (choice === "all") {
+      finalRecur = null;
+    } else {
+      const next = nextOccurrenceDate(due, recur);
+      if (!next) {
+        finalRecur = null;
+      } else {
+        finalStatus = "todo";
+        finalDue = next;
+      }
     }
+  }
+
+  if (existing) {
+    existing.text = text;
+    existing.status = finalStatus;
+    existing.due = finalDue;
+    existing.tags = tags;
+    existing.notes = notes;
+    existing.recur = finalRecur;
+    existing.updated = new Date().toISOString();
   } else {
-    const newTask = {
+    tasks.push({
       id: genId(),
       text,
-      status: normalizeStatus(els.taskStatus.value),
-      due,
+      status: finalStatus,
+      due: finalDue,
       tags,
       notes,
-      recur,
+      recur: finalRecur,
       created: todayISO(),
       updated: new Date().toISOString(),
-    };
-    tasks.push(newTask);
+    });
   }
   closeModal();
   renderAll();
   autoSaveFile();
-  toast(editingId ? "Задача обновлена" : "Задача добавлена");
+  toast(existing ? "Задача обновлена" : "Задача добавлена");
 }
 
 function deleteTask(id) {

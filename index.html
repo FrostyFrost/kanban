@@ -152,6 +152,22 @@
   </div>
 </div>
 
+<!-- Модалка подтверждения для повторяющихся задач -->
+<div id="recur-done-modal" class="modal-backdrop hidden">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="recur-done-title">
+    <div class="modal-header">
+      <h2 id="recur-done-title">Повторяющаяся задача</h2>
+      <button id="recur-done-cancel-x" class="icon-btn" aria-label="Закрыть">✕</button>
+    </div>
+    <p id="recur-done-text" class="recur-done-text">Выполнить весь цикл, или только одно событие?</p>
+    <div class="modal-actions">
+      <button id="recur-done-cancel" class="btn btn-ghost">Отмена</button>
+      <button id="recur-done-one" class="btn">Только одно событие</button>
+      <button id="recur-done-all" class="btn btn-primary">Весь цикл</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container" class="toast-container"></div>
 
 <script src="app.js"></script>
