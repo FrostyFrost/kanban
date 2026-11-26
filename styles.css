@@ -198,8 +198,8 @@ main { padding: 16px 20px 40px; }
 .cal-day.today { border-color: var(--primary); color: var(--text); }
 .cal-day.selected { outline: 2px solid var(--primary); color: var(--text); }
 .cal-day .cal-num { font-weight: 600; }
-.cal-day .cal-dots { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; max-height: 44px; overflow: hidden; }
-.cal-day .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--primary); flex-shrink: 0; box-shadow: 0 0 0 2px var(--surface); }
+.cal-day .cal-dots { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; max-height: 54px; overflow: hidden; }
+.cal-day .dot { width: 18px; height: 18px; border-radius: 5px; background: var(--primary); flex-shrink: 0; box-shadow: 0 0 0 2px var(--surface); }
 .cal-day .dot.dot-overdue { background: var(--danger); }
 .cal-day .cal-count {
   position: absolute; top: 3px; right: 5px;
