@@ -14,6 +14,7 @@
     <span id="sync-status" class="sync-status" title="Статус синхронизации"></span>
   </div>
   <div class="header-right">
+    <button id="btn-show-hidden" class="btn btn-ghost" title="Показать скрытые карточки">👁<span id="header-hidden-count"></span></button>
     <button id="btn-settings" class="btn btn-ghost" title="Настройки">⚙</button>
     <button id="btn-file" class="btn btn-ghost" title="Загрузить файл задач">📁</button>
     <button id="btn-pull" class="btn btn-ghost" title="Обновить из GitHub">🔄</button>
@@ -89,6 +90,23 @@
         <span>Заметка (необязательно)</span>
         <textarea id="task-notes" rows="3" maxlength="1000" placeholder=""></textarea>
       </label>
+      <div class="recur-block">
+        <label class="recur-toggle">
+          <input type="checkbox" id="task-recur-enabled"> Повторять
+        </label>
+        <div class="recur-fields hidden" id="recur-fields">
+          <span class="muted">Каждые</span>
+          <input type="number" id="task-recur-every" min="1" max="99" value="1">
+          <select id="task-recur-unit">
+            <option value="day">дни</option>
+            <option value="week">недели</option>
+            <option value="month">месяца</option>
+            <option value="year">года</option>
+          </select>
+          <span class="muted">до</span>
+          <input type="date" id="task-recur-until">
+        </div>
+      </div>
       <div class="modal-actions">
         <button type="button" id="task-delete" class="btn btn-danger hidden">Удалить</button>
         <span class="spacer"></span>
@@ -124,10 +142,6 @@
         <span>Ветка</span>
         <input type="text" id="gh-branch" value="main">
       </label>
-      <div class="hidden-tasks-row">
-        <span id="hidden-count" class="muted"></span>
-        <button type="button" id="settings-show-hidden" class="btn btn-ghost">Показать скрытые</button>
-      </div>
       <div class="modal-actions">
         <button type="button" id="settings-clear-token" class="btn btn-ghost">Сбросить токен</button>
         <span class="spacer"></span>

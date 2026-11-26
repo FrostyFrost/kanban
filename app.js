@@ -52,7 +52,13 @@ const els = {
   taskTags: $("#task-tags"),
   knownTags: $("#known-tags"),
   taskNotes: $("#task-notes"),
+  taskRecurEnabled: $("#task-recur-enabled"),
+  taskRecurFields: $("#recur-fields"),
+  taskRecurEvery: $("#task-recur-every"),
+  taskRecurUnit: $("#task-recur-unit"),
+  taskRecurUntil: $("#task-recur-until"),
   taskDelete: $("#task-delete"),
+  btnShowHidden: $("#btn-show-hidden"),
   settingsModal: $("#settings-modal"),
   settingsForm: $("#settings-form"),
   calGrid: $("#calendar-grid"),
@@ -75,6 +81,73 @@ function fmtDate(iso) {
   const months = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "нояб", "дек"];
   return `${d.getDate()} ${months[d.getMonth()]}`;
 }
+function normalizeRecur(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const every = Math.max(1, parseInt(raw.every, 10) || 1);
+  const unit = ["day", "week", "month", "year"].includes(raw.unit) ? raw.unit : null;
+  if (!unit) return null;
+  const until = typeof raw.until === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.until) ? raw.until : "";
+  return { every, unit, until };
+}
+function advanceDueDate(dueStr, every, unit) {
+  if (!dueStr) return "";
+  const d = new Date(dueStr + "T00:00:00");
+  if (isNaN(d.getTime())) return "";
+  if (unit === "day") d.setDate(d.getDate() + every);
+  else if (unit === "week") d.setDate(d.getDate() + every * 7);
+  else if (unit === "month") {
+    const day = d.getDate();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + every);
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    d.setDate(Math.min(day, lastDay));
+  } else if (unit === "year") {
+    const day = d.getDate();
+    d.setDate(1);
+    d.setFullYear(d.getFullYear() + every);
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    d.setDate(Math.min(day, lastDay));
+  }
+  // local ISO
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function readRecurFromForm() {
+  const enabled = !!els.taskRecurEnabled.checked;
+  if (!enabled) return null;
+  const every = Math.max(1, parseInt(els.taskRecurEvery.value, 10) || 1);
+  const unit = ["day", "week", "month", "year"].includes(els.taskRecurUnit.value) ? els.taskRecurUnit.value : "day";
+  const until = els.taskRecurUntil.value || "";
+  return { every, unit, until };
+}
+
+function syncRecurFieldsVisibility() {
+  const show = els.taskRecurEnabled.checked;
+  els.taskRecurFields.classList.toggle("hidden", !show);
+}
+
+function spawnNextRecurrence(task) {
+  // создать следующую инстанцию повторяющейся задачи
+  const recur = task.recur;
+  if (!recur || !recur.every || !recur.unit) return false;
+  const nextDue = advanceDueDate(task.due, recur.every, recur.unit);
+  if (!nextDue) return false;
+  if (recur.until && nextDue > recur.until) return false;   // конец периода
+  const next = {
+    id: genId(),
+    text: task.text,
+    status: "todo",
+    due: nextDue,
+    tags: [...task.tags],
+    notes: task.notes,
+    created: todayISO(),
+    updated: new Date().toISOString(),
+    recur: { every: recur.every, unit: recur.unit, until: recur.until || "" },
+  };
+  tasks.push(next);
+  return true;
+}
+
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -117,6 +190,7 @@ function normalizeTask(raw) {
     due,
     tags,
     notes: String(raw.notes ?? "").trim(),
+    recur: normalizeRecur(raw.recur),
     hidden: Boolean(raw.hidden),
     created: typeof raw.created === "string" && raw.created ? raw.created : todayISO(),
     updated: new Date().toISOString(),
@@ -404,6 +478,7 @@ function taskCardHtml(task) {
   const dueDate = task.due ? fmtDate(task.due) : "";
   const overdue = task.due && task.due < todayISO() && task.status !== "done";
   const dueHtml = task.due ? `<span class="due ${overdue ? "overdue" : ""}">📅 ${dueDate}</span>` : "";
+  const recurHtml = task.recur ? `<span class="recur-badge" title="Повторяется каждые ${task.recur.every} ${task.recur.unit === "day" ? "дни" : task.recur.unit === "week" ? "недели" : task.recur.unit === "month" ? "месяца" : "года"}">↻</span>` : "";
   const tags = task.tags.map(tagPill).join("");
   const notes = task.notes ? `<div class="task-notes">${escapeHtml(task.notes)}</div>` : "";
   const hideBtn = task.status === "done" ? `<button type="button" class="task-hide" data-hide="${task.id}" title="Скрыть карточку">Скрыть</button>` : "";
@@ -411,7 +486,7 @@ function taskCardHtml(task) {
     ${hideBtn}
     <div class="task-text">${escapeHtml(task.text)}</div>
     ${notes}
-    <div class="task-meta">${tags}${dueHtml}</div>
+    <div class="task-meta">${tags}${recurHtml}${dueHtml}</div>
   `;
 }
 
@@ -477,8 +552,10 @@ function renderBoard() {
       const id = e.dataTransfer.getData("text/plain") || dragCard;
       const t = tasks.find((x) => x.id === id);
       if (t && t.status !== status) {
+        const prev = t.status;
         t.status = status;
         t.updated = new Date().toISOString();
+        if (t.status === "done" && prev !== "done" && t.recur) spawnNextRecurrence(t);
         renderAll();
         autoSaveFile();
       }
@@ -491,8 +568,10 @@ function renderBoard() {
       const id = e.dataTransfer.getData("text/plain") || dragCard;
       const t = tasks.find((x) => x.id === id);
       if (t && t.status !== status) {
+        const prev = t.status;
         t.status = status;
         t.updated = new Date().toISOString();
+        if (t.status === "done" && prev !== "done" && t.recur) spawnNextRecurrence(t);
         renderAll();
         autoSaveFile();
       }
@@ -610,8 +689,14 @@ function unhideAllTasks() {
 
 function updateHiddenIndicator() {
   const hiddenCount = tasks.filter((t) => t.hidden).length;
-  const el = document.getElementById("hidden-count");
-  if (el) el.textContent = hiddenCount ? `Скрыто карточек: ${hiddenCount}` : "Скрытых карточек нет";
+  const el = document.getElementById("header-hidden-count");
+  if (el) el.textContent = hiddenCount ? ` (${hiddenCount})` : "";
+  if (els.btnShowHidden) {
+    els.btnShowHidden.disabled = hiddenCount === 0;
+    els.btnShowHidden.title = hiddenCount
+      ? `Показать скрытые (${hiddenCount})`
+      : "Скрытых карточек нет";
+  }
 }
 
 function renderAll() {
@@ -640,6 +725,18 @@ function openModal(id = null) {
     els.taskDue.value = t.due || "";
     els.taskTags.value = t.tags.join(", ");
     els.taskNotes.value = t.notes;
+    if (t.recur) {
+      els.taskRecurEnabled.checked = true;
+      els.taskRecurEvery.value = String(t.recur.every || 1);
+      els.taskRecurUnit.value = t.recur.unit || "day";
+      els.taskRecurUntil.value = t.recur.until || "";
+    } else {
+      els.taskRecurEnabled.checked = false;
+      els.taskRecurEvery.value = "1";
+      els.taskRecurUnit.value = "week";
+      els.taskRecurUntil.value = "";
+    }
+    syncRecurFieldsVisibility();
     els.taskDelete.classList.remove("hidden");
   } else {
     editingId = null;
@@ -650,6 +747,11 @@ function openModal(id = null) {
     els.taskDue.value = "";
     els.taskTags.value = "";
     els.taskNotes.value = "";
+    els.taskRecurEnabled.checked = false;
+    els.taskRecurEvery.value = "1";
+    els.taskRecurUnit.value = "week";
+    els.taskRecurUntil.value = "";
+    syncRecurFieldsVisibility();
     els.taskDelete.classList.add("hidden");
   }
   fillKnownTags();
@@ -671,27 +773,38 @@ function saveTaskFromForm() {
   const due = els.taskDue.value || "";
   const tags = normalizeTags(els.taskTags.value);
   const notes = els.taskNotes.value.trim();
+  const recur = readRecurFromForm();
+  if (recur && !due) {
+    toast("При повторении укажите срок (дедлайн)", "err");
+    return;
+  }
   if (editingId) {
     const t = tasks.find((x) => x.id === editingId);
     if (t) {
+      const prevStatus = t.status;
       t.text = text;
       t.status = normalizeStatus(els.taskStatus.value);
       t.due = due;
       t.tags = tags;
       t.notes = notes;
+      t.recur = recur;
       t.updated = new Date().toISOString();
+      if (t.status === "done" && prevStatus !== "done" && recur) spawnNextRecurrence(t);
     }
   } else {
-    tasks.push({
+    const newTask = {
       id: genId(),
       text,
       status: normalizeStatus(els.taskStatus.value),
       due,
       tags,
       notes,
+      recur,
       created: todayISO(),
       updated: new Date().toISOString(),
-    });
+    };
+    tasks.push(newTask);
+    if (newTask.status === "done" && recur) spawnNextRecurrence(newTask);
   }
   closeModal();
   renderAll();
@@ -822,6 +935,7 @@ async function syncToGitHub() {
 function setupEvents() {
   // создание задачи
   $("#btn-new").addEventListener("click", () => openModal(null));
+  els.taskRecurEnabled.addEventListener("change", syncRecurFieldsVisibility);
 
   $("#btn-settings").addEventListener("click", () => openSettings());
   $("#btn-file").addEventListener("click", async () => {
@@ -843,7 +957,7 @@ function setupEvents() {
     }
   });
   $("#btn-pull").addEventListener("click", () => syncFromGitHub());
-  $("#settings-show-hidden").addEventListener("click", unhideAllTasks);
+  els.btnShowHidden.addEventListener("click", unhideAllTasks);
   $("#btn-sync").addEventListener("click", () => syncToGitHub());
 
   // календарь

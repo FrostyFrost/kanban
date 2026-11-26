@@ -219,12 +219,40 @@ main { padding: 16px 20px 40px; }
 .calendar-detail .cal-task { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px dashed var(--border); }
 .calendar-detail .cal-task:first-of-type { border-top: none; }
 
-/* Hidden done tasks row in settings */
-.hidden-tasks-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 10px 12px; border: 1px dashed var(--border); border-radius: 10px;
+.btn-ghost:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
-.hidden-tasks-row .btn { padding: 6px 12px; font-size: 12px; }
+
+/* Recurring task block in modal */
+.recur-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+.recur-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.recur-toggle input { width: 16px; height: 16px; cursor: pointer; }
+.recur-fields {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.recur-fields.hidden { display: none; }
+.recur-fields input[type="number"] { width: 70px; }
+.recur-fields select { min-width: 90px; }
+.recur-fields input[type="date"] { flex: 1; min-width: 130px; }
 
 /* Hide button on done cards */
 .task-hide {
@@ -234,6 +262,13 @@ main { padding: 16px 20px 40px; }
   cursor: pointer; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
   transition: background 0.12s, color 0.12s;
 }
+.recur-badge {
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
 .task-hide:hover { background: rgba(229,83,75,0.2); color: var(--danger); border-color: rgba(229,83,75,0.4); }
 
 /* Modal */
