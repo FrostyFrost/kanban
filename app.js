@@ -1090,6 +1090,17 @@ function setupEvents() {
   });
   $("#task-cancel").addEventListener("click", closeModal);
   $("#modal-close").addEventListener("click", closeModal);
+  {
+    const rd = document.getElementById("recur-done-modal");
+    if (rd) {
+      rd.addEventListener("click", (e) => {
+        if (e.target === rd) {
+          const cx = document.getElementById("recur-done-cancel-x");
+          if (cx) cx.click();
+        }
+      });
+    }
+  }
   els.taskDelete.addEventListener("click", () => {
     if (editingId) deleteTask(editingId);
   });
@@ -1122,6 +1133,11 @@ function setupEvents() {
   // клавиатура
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
+      const rd = document.getElementById("recur-done-modal");
+      if (rd && !rd.classList.contains("hidden")) {
+        const cx = document.getElementById("recur-done-cancel-x");
+        if (cx) cx.click();
+      }
       closeModal();
       els.settingsModal.classList.add("hidden");
     }
