@@ -23,6 +23,7 @@ const TASK_SELECT_FILE_ACTIVE_KEY = "kanban.fileHandle";
 
 /* ---------- Состояние ---------- */
 let tasks = [];           // текущий список задач
+let tombstones = [];      // [{id, deletedAt}] — запомненные удаления
 let calCursor = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 let selectedDate = null;
 let editingId = null;
@@ -296,12 +297,21 @@ function normalizeTask(raw) {
 /* ---------- Парсинг / сериализация JSONL ---------- */
 function parseJSONL(text) {
   const out = [];
+  const tombstonesOut = [];
   let skipped = 0;
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
       const obj = JSON.parse(trimmed);
+      // строка-«след» об удалённой карточке: {"tombstone": true, "id": "...", "deletedAt": "..."}
+      if (obj && obj.tombstone === true && obj.id) {
+        tombstonesOut.push({
+          id: String(obj.id),
+          deletedAt: typeof obj.deletedAt === "string" && obj.deletedAt ? obj.deletedAt : new Date().toISOString(),
+        });
+        continue;
+      }
       const t = normalizeTask(obj);
       if (t) out.push(t);
       else skipped++;
@@ -312,17 +322,21 @@ function parseJSONL(text) {
   if (skipped > 0) {
     console.warn(`Пропущено невалидных строк: ${skipped}`);
   }
-  return out;
+  return { tasks: out, tombstones: tombstonesOut };
 }
-function serializeJSONL(list) {
-  return list.map((t) => JSON.stringify(t)).join("\n") + (list.length ? "\n" : "");
+function serializeJSONL(list, tombstones = []) {
+  const lines = (list || []).map((t) => JSON.stringify(t));
+  for (const tomb of (tombstones || [])) {
+    lines.push(JSON.stringify({ tombstone: true, id: tomb.id, deletedAt: tomb.deletedAt }));
+  }
+  return lines.length ? lines.join("\n") + "\n" : "";
 }
 
 /* ---------- localStorage ---------- */
 const LS_KEY = "kanban.tasks";
 function saveLocalStorage() {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(tasks));
+    localStorage.setItem(LS_KEY, JSON.stringify({ tasks, tombstones }));
   } catch (e) {
     console.warn("Не удалось сохранить в localStorage", e);
   }
@@ -332,8 +346,18 @@ function loadLocalStorage() {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return null;
     const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return null;
-    return arr.map(normalizeTask).filter(Boolean);
+    // формат до появления tombstone'ов: просто массив задач
+    if (Array.isArray(arr)) {
+      return { tasks: arr.map(normalizeTask).filter(Boolean), tombstones: [] };
+    }
+    if (arr && typeof arr === "object" && Array.isArray(arr.tasks)) {
+      const tombs = Array.isArray(arr.tombstones) ? arr.tombstones : [];
+      return {
+        tasks: arr.tasks.map(normalizeTask).filter(Boolean),
+        tombstones: tombs.filter((t) => t && t.id && t.deletedAt),
+      };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -438,7 +462,7 @@ async function autoSaveFile({ silent = false } = {}) {
     return;
   }
   try {
-    await writeFileHandle(fileHandle, serializeJSONL(tasks));
+    await writeFileHandle(fileHandle, serializeJSONL(tasks, tombstones));
     fileBoundToastShown = false;
     setSyncStatus("Файл сохранён", "ok");
   } catch (e) {
@@ -448,7 +472,7 @@ async function autoSaveFile({ silent = false } = {}) {
 }
 
 function downloadAll() {
-  const blob = new Blob([serializeJSONL(tasks)], { type: "application/jsonl" });
+  const blob = new Blob([serializeJSONL(tasks, tombstones)], { type: "application/jsonl" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "tasks.jsonl";
@@ -543,7 +567,7 @@ async function githubPush() {
     console.warn("Не удалось извлечь sha из ответа:", existing);
   }
 
-  const contentStr = serializeJSONL(tasks);
+  const contentStr = serializeJSONL(tasks, tombstones);
   const bytes = new TextEncoder().encode(contentStr);
   const contentB64 = btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""));
   const body = {
@@ -933,7 +957,11 @@ async function saveTaskFromForm() {
 
 function deleteTask(id) {
   if (!confirm("Удалить задачу?")) return;
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
   tasks = tasks.filter((t) => t.id !== id);
+  // кладём запись об удалённом id — она уйдёт в синхронизацию и не позволит карточке вернуться
+  tombstones = [...tombstones.filter((t) => t.id !== id), { id, deletedAt: new Date().toISOString() }];
   closeModal();
   renderAll();
   autoSaveFile();
@@ -947,10 +975,11 @@ async function loadTasks() {
   if (handle) {
     try {
       const text = await readFileHandle(handle);
-      const parsed = parseJSONL(text);
-      tasks = parsed;
+      const { tasks: parsedTasks, tombstones: parsedTombs } = parseJSONL(text);
+      tasks = parsedTasks;
+      tombstones = parsedTombs;
       fileHandle = handle;   // ← важно: запомнили handle, чтобы автосохранение было
-      setSyncStatus(parsed.length ? "Файл загружен" : "Файл пуст", "ok");
+      setSyncStatus(parsedTasks.length ? "Файл загружен" : "Файл пуст", "ok");
       return;
     } catch (e) {
       console.warn("Ошибка чтения файла:", e);
@@ -958,13 +987,15 @@ async function loadTasks() {
   }
   // 2) локальное сохранение (localStorage)
   const fromLs = loadLocalStorage();
-  if (fromLs && fromLs.length) {
-    tasks = fromLs;
+  if (fromLs && (fromLs.tasks.length || fromLs.tombstones.length)) {
+    tasks = fromLs.tasks;
+    tombstones = fromLs.tombstones;
     setSyncStatus("Загружено из localStorage", "ok");
     return;
   }
   // 3) пустой начальный
   tasks = [];
+  tombstones = [];
   setSyncStatus("Новый список", "");
 }
 
@@ -976,18 +1007,48 @@ function pickNewest(a, b) {
   return ta > tb ? a : b;
 }
 
-function mergeTasks(localTasks, remoteTasks) {
+/**
+ * Мёрдж двух наборов задач с учётом tombstone'ов.
+ * Принцип: карточка существует, только если её не закрыл ни один tombstone
+ * более новый, чем последнее обновление карточки. При равном времени
+ * побеждает tombstone (удаление > правка).
+ */
+function mergeTasks(localTasks, remoteTasks, localTombstones = [], remoteTombstones = []) {
+  const tombMap = new Map();
+  for (const t of [...localTombstones, ...remoteTombstones]) {
+    if (!t || !t.id) continue;
+    const existing = tombMap.get(t.id);
+    if (!existing || Date.parse(t.deletedAt) >= Date.parse(existing.deletedAt)) {
+      tombMap.set(t.id, { id: t.id, deletedAt: t.deletedAt });
+    }
+  }
+  const isTombstoned = (t) => {
+    const tomb = tombMap.get(t.id);
+    if (!tomb) return false;
+    const ts = Date.parse(tomb.deletedAt);
+    const tt = Date.parse(t.updated || (t.created || "")) || 0;
+    return ts >= tt;
+  };
+
   const byId = new Map();
-  for (const t of localTasks) byId.set(t.id, t);
-  const stats = { added: 0, updated: 0, kept: 0 };
+  for (const t of localTasks) {
+    if (isTombstoned(t)) continue;       // удалена прошлой синхронизацией — не воскресаем
+    byId.set(t.id, t);
+  }
+  const stats = { added: 0, updated: 0, kept: 0, tombstoned: 0 };
   for (const t of remoteTasks) {
+    if (isTombstoned(t)) { stats.tombstoned++; continue; }
     const local = byId.get(t.id);
     if (!local) { byId.set(t.id, t); stats.added++; continue; }
     const winner = pickNewest(local, t);
     if (winner === t) { byId.set(t.id, t); stats.updated++; }
     else { byId.set(t.id, local); stats.kept++; }
   }
-  return { tasks: [...byId.values()], stats };
+  const tasks = [...byId.values()].filter((t) => !isTombstoned(t));
+  // чистим tombstones: отбрасываем те, чья карточка всё же вернулась (обновили после удаления)
+  const liveIds = new Set(tasks.map((t) => t.id));
+  const tombstones = [...tombMap.values()].filter((t) => !liveIds.has(t.id));
+  return { tasks, tombstones, stats };
 }
 
 
@@ -996,8 +1057,7 @@ async function autoCheckRemote() {
   try {
     const text = await githubPull();
     if (!text) return;
-    const remoteTasks = parseJSONL(text);
-    const localNorm = JSON.stringify(serializeJSONL(tasks).trim());
+    const localNorm = JSON.stringify(serializeJSONL(tasks, tombstones).trim());
     const remoteNorm = JSON.stringify(text.trim());
     if (localNorm === remoteNorm) {
       setSyncStatus("Синхронизировано ✓", "ok");
@@ -1028,26 +1088,29 @@ async function syncAll() {
     toast("Не удалось загрузить из GitHub", "err");
     return;
   }
-  const remoteTasks = parseJSONL(remoteText);
-  const { tasks: merged, stats } = mergeTasks(tasks, remoteTasks);
+  const { tasks: remoteTasks, tombstones: remoteTombstones } = parseJSONL(remoteText);
+  const { tasks: merged, tombstones: mergedTombstones, stats } = mergeTasks(
+    tasks, remoteTasks, tombstones, remoteTombstones
+  );
   tasks = merged;
+  tombstones = mergedTombstones;
   renderAll();
   autoSaveFile({ silent: true });
-  console.log(`merge: added=${stats.added}, updated=${stats.updated}, kept=${stats.kept}`);
+  console.log(`merge: added=${stats.added}, updated=${stats.updated}, kept=${stats.kept}, tombstoned=${stats.tombstoned}`);
 
   // 2) push
   if (!s.token) {
     // нет токена — скачиваем объединённый файл, пусть пользователь push'нет вручную
     downloadAll();
     setSyncStatus("Загружено — токен не задан", "warn");
-    toast(`Загружено — новых: ${stats.added}, обновлено: ${stats.updated}. Токен не задан — файл скачан, сделайте коммит/push вручную`, "err");
+    toast(`Загружено — новых: ${stats.added}, обновлено: ${stats.updated}, удалённых не воскресили: ${stats.tombstoned || 0}. Токен не задан — файл скачан, сделайте коммит/push вручную`, "err");
     return;
   }
   setSyncStatus("Загрузка на GitHub…", "");
   try {
     await githubPush();
     setSyncStatus("Синхронизировано ✓", "ok");
-    toast(`Синхронизировано — новых: ${stats.added}, обновлено из облака: ${stats.updated}, локальные актуальнее: ${stats.kept}`);
+    toast(`Синхронизировано — новых: ${stats.added}, обновлено из облака: ${stats.updated}, локальные актуальнее: ${stats.kept}, удалённых не воскресили: ${stats.tombstoned || 0}`);
   } catch (e) {
     setSyncStatus("Ошибка отправки", "err");
     const hint = /401/.test(e.message)
@@ -1078,8 +1141,9 @@ function setupEvents() {
     fileHandle = h;
     try {
       const text = await readFileHandle(h);
-      const parsed = parseJSONL(text);
-      tasks = parsed;
+      const { tasks: parsedTasks, tombstones: parsedTombs } = parseJSONL(text);
+      tasks = parsedTasks;
+      tombstones = parsedTombs;
       fileHandle = h;
       idbPut(TASK_SELECT_FILE_ACTIVE_KEY, h);
       renderAll();
