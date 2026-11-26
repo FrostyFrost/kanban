@@ -420,7 +420,10 @@ function renderBoard() {
       card.dataset.id = t.id;
       card.draggable = true;
       card.innerHTML = taskCardHtml(t);
-      card.addEventListener("click", () => openModal(t.id));
+      card.addEventListener("click", () => {
+        if (card._justDragged) { card._justDragged = false; return; }
+        openModal(t.id);
+      });
       card.addEventListener("dragstart", (e) => {
         dragCard = t.id;
         e.dataTransfer.effectAllowed = "move";
@@ -431,6 +434,8 @@ function renderBoard() {
         card.classList.remove("dragging");
         $$(".column.drag-over").forEach((c) => c.classList.remove("drag-over"));
         dragCard = null;
+        card._justDragged = true;
+        setTimeout(() => { card._justDragged = false; }, 250);
       });
       body.appendChild(card);
     }
