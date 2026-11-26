@@ -985,28 +985,6 @@ function mergeTasks(localTasks, remoteTasks) {
   return { tasks: [...byId.values()], stats };
 }
 
-async function syncFromGitHub({ silent = false } = {}) {
-  setSyncStatus("Синхронизация…", "");
-  try {
-    const text = await githubPull();
-    if (!text) throw new Error("Пустой ответ от GitHub");
-    const remoteTasks = parseJSONL(text);
-    const { tasks: merged, stats } = mergeTasks(tasks, remoteTasks);
-    tasks = merged;
-    console.log(`merge: added=${stats.added}, updated=${stats.updated}, kept=${stats.kept}`);
-    renderAll();
-    autoSaveFile({ silent: true });
-    setSyncStatus("Синхронизировано с GitHub", "ok");
-    if (!silent) toast(`Загружено с GitHub — новых: ${stats.added}, обновлено из облака: ${stats.updated}, локальные актуальнее: ${stats.kept}`);
-    return true;
-  } catch (e) {
-    if (!silent) {
-      setSyncStatus("Ошибка синхронизации", "err");
-      toast("Не удалось загрузить с GitHub: " + e.message, "err");
-    }
-    return false;
-  }
-}
 
 async function autoCheckRemote() {
   // на открытии: только проверяем, есть ли обновления на GitHub — не перезаписываем без спроса
@@ -1026,22 +1004,48 @@ async function autoCheckRemote() {
   }
 }
 
-async function syncToGitHub() {
+// единая синхронизация: pull из GitHub (мердж по последнему updated), затем push объединённой версии
+async function syncAll() {
   const s = loadSettings();
+  setSyncStatus("Синхронизация…", "");
+  // 1) pull + merge
+  let remoteText;
+  try {
+    remoteText = await githubPull();
+  } catch (e) {
+    // pull не удался — НЕ пушим, чтобы не перезаписать чужие изменения молча
+    setSyncStatus("Ошибка загрузки", "err");
+    toast("Не удалось загрузить из GitHub: " + e.message, "err");
+    return;
+  }
+  if (!remoteText) {
+    setSyncStatus("Ошибка загрузки", "err");
+    toast("Не удалось загрузить из GitHub", "err");
+    return;
+  }
+  const remoteTasks = parseJSONL(remoteText);
+  const { tasks: merged, stats } = mergeTasks(tasks, remoteTasks);
+  tasks = merged;
+  renderAll();
+  autoSaveFile({ silent: true });
+  console.log(`merge: added=${stats.added}, updated=${stats.updated}, kept=${stats.kept}`);
+
+  // 2) push
   if (!s.token) {
-    // если нет токена — скачиваем файл, чтобы пользователь сделал commit/push вручную
+    // нет токена — скачиваем объединённый файл, пусть пользователь push'нет вручную
     downloadAll();
-    toast("Нет токена — файл скачан. Сделайте коммит и push вручную", "err");
+    setSyncStatus("Загружено — токен не задан", "warn");
+    toast(`Загружено — новых: ${stats.added}, обновлено: ${stats.updated}. Токен не задан — файл скачан, сделайте коммит/push вручную`, "err");
     return;
   }
   setSyncStatus("Загрузка на GitHub…", "");
   try {
     await githubPush();
-    setSyncStatus("Загружено на GitHub", "ok");
-    toast("Изменения отправлены в GitHub");
+    setSyncStatus("Синхронизировано ✓", "ok");
+    toast(`Синхронизировано — новых: ${stats.added}, обновлено из облака: ${stats.updated}, локальные актуальнее: ${stats.kept}`);
   } catch (e) {
     setSyncStatus("Ошибка отправки", "err");
-    toast("Ошибка отправки: " + e.message, "err");
+    toast("Не удалось отправить на GitHub: " + e.message + " (данные уже загружены локально)", "err");
   }
 }
 
@@ -1070,9 +1074,8 @@ function setupEvents() {
       toast("Ошибка чтения файла: " + e.message, "err");
     }
   });
-  $("#btn-pull").addEventListener("click", () => syncFromGitHub());
   els.btnShowHidden.addEventListener("click", unhideAllTasks);
-  $("#btn-sync").addEventListener("click", () => syncToGitHub());
+  $("#btn-sync").addEventListener("click", () => syncAll());
 
   // календарь
   $("#cal-prev").addEventListener("click", () => {
@@ -1148,7 +1151,7 @@ function setupEvents() {
       els.settingsModal.classList.add("hidden");
     }
     if (e.key === "n" && !isTyping()) openModal(null);
-    if (e.key === "s" && !isTyping()) syncToGitHub();
+    if (e.key === "s" && !isTyping()) syncAll();
   });
 }
 

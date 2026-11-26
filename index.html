@@ -17,8 +17,7 @@
     <button id="btn-show-hidden" class="btn btn-ghost" title="Показать скрытые карточки">👁<span id="header-hidden-count"></span></button>
     <button id="btn-settings" class="btn btn-ghost" title="Настройки">⚙</button>
     <button id="btn-file" class="btn btn-ghost" title="Загрузить файл задач">📁</button>
-    <button id="btn-pull" class="btn btn-ghost" title="Обновить из GitHub">🔄</button>
-    <button id="btn-sync" class="btn btn-primary" title="Загрузить локальные изменения в GitHub">☁</button>
+    <button id="btn-sync" class="btn btn-primary" title="Синхронизировать с GitHub (pull + push)">☁⇄</button>
   </div>
 </header>
 
@@ -125,7 +124,7 @@
       <button id="settings-close" class="icon-btn" aria-label="Закрыть">✕</button>
     </div>
     <form id="settings-form">
-      <p class="muted">Синхронизация по кнопочке <b>☁</b> — это коммит и push локального репозитория данных в GitHub (по токену). Если «зачем» не нужен — просто скачивайте файл вручную.</p>
+      <p class="muted">Кнопочка <b>☁⇄</b> делает pull + push: сначала подтягивает свежие карточки (merge по `updated`), затем отправляет объединённую версию обратно (по токену). Если токен не задан — файл скачается.</p>
       <label class="field">
         <span>GitHub PAT (для отправки)</span>
         <input type="password" id="gh-token" placeholder="ghp_... (опционально)">
